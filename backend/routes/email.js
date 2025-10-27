@@ -221,14 +221,14 @@ router.post("/send-invoice", async (req, res) => {
 
     console.log("Email sent successfully:", info.messageId);
 
-    res.status(200).json({ 
+    res.status(200).json({
       message: "Invoice sent successfully",
       messageId: info.messageId,
       recipientEmail: recipientEmail,
     });
   } catch (error) {
     console.error("Error sending email:", error);
-    
+
     // Provide more helpful error messages
     let errorMessage = "Failed to send invoice";
     if (error.code === "EAUTH") {
@@ -238,9 +238,9 @@ router.post("/send-invoice", async (req, res) => {
       errorMessage =
         "Could not connect to email server. Please check your internet connection.";
     }
-    
-    res.status(500).json({ 
-      message: errorMessage, 
+
+    res.status(500).json({
+      message: errorMessage,
       error: error.message,
     });
   }
@@ -267,7 +267,7 @@ router.post("/send-invoice-pdf", async (req, res) => {
       // Lawyer Invoice Template (matches printLawyerInvoice exactly)
       const isLease = invoiceData.propertyType === "LEASE";
       const balanceLabel = invoiceData.balanceLabel || "Balance Due on Closing";
-      
+
       invoiceHTML = `
         <!DOCTYPE html>
         <html>
@@ -482,30 +482,150 @@ router.post("/send-invoice-pdf", async (req, res) => {
       `;
     }
 
+    if (invoiceType === "client") {
+      // Client Invoice Template (matches printClientInvoice exactly)
+      invoiceHTML = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Client Invoice</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 40px; }
+            .header { text-align: center; margin-bottom: 30px; }
+            .header img { width: 120px; margin-bottom: 10px; }
+            .company-title { font-size: 20px; font-weight: bold; margin-top: 8px; }
+            .company-address { margin-bottom: 8px; }
+            .section { margin-bottom: 24px; }
+            .label { font-weight: bold; display: inline-block; min-width: 120px; }
+            .value { display: inline-block; }
+            .amount-table { margin-top: 24px; margin-bottom: 24px; }
+            .amount-table td { padding: 2px 8px; }
+            .amount-table .desc { min-width: 220px; }
+            .amount-table .right { text-align: right; min-width: 100px; }
+            .amount-table .bold { font-weight: bold; }
+            .footer { margin-top: 32px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <img src="https://res.cloudinary.com/dyv1yieeq/image/upload/v1759428862/logo_tonzim.jpg" alt="Homelife Top Star Realty Inc. Logo" style="width: 120px; margin-bottom: 10px;" />
+            <div class="company-title">Homelife Top Star Realty Inc., Brokerage</div>
+            <div class="company-address">9889 Markham Road, Suite 201 Markham, Ontario L6E OB7</div>
+            <div>Phone: 905-209-1400 | Fax: 905-209-1403</div>
+          </div>
+          <div class="section">
+            <div>${invoiceData.date}</div>
+            <br/>
+            <div><b>Re:</b> Invoice for Commission Re: ${
+              invoiceData.dealType === "Lease" ? "Lease" : "Sale"
+            } of ${invoiceData.propertyAddress}, At a price of <b>$${Number(
+        invoiceData.salePrice || 0
+      ).toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}</b></div>
+          </div>
+          <div class="section">
+            <table class="amount-table">
+              <tr>
+                <td class="desc">Total Commission</td>
+                <td class="right">$${Number(
+                  invoiceData.commissionPayable || 0
+                ).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}</td>
+              </tr>
+              <tr>
+                <td class="desc">Total HST</td>
+                <td class="right">$${Number(
+                  invoiceData.totalHST || 0
+                ).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}</td>
+              </tr>
+              <tr>
+                <td class="desc">Total Commission Percentage</td>
+                <td class="right">${
+                  invoiceData.totalCommissionPercentage || "0.00"
+                }%</td>
+              </tr>
+              <tr>
+                <td class="desc">Total Commission Payable</td>
+                <td class="right">$${Number(
+                  invoiceData.totalCommission || 0
+                ).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}</td>
+              </tr>
+              <tr>
+                <td class="desc">Less: Deposit For Agreement to ${
+                  invoiceData.dealType === "Lease"
+                    ? "Lease"
+                    : "Purchase and Sale"
+                }</td>
+                <td class="right">$${parseFloat(
+                  invoiceData.deposit || 0
+                ).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}</td>
+              </tr>
+              <tr class="bold">
+                <td class="desc"><b>${
+                  invoiceData.balanceLabel || "Balance"
+                }</b></td>
+                <td class="right"><b>$${Number(
+                  invoiceData.balanceToBrokerage ||
+                    invoiceData.balanceToVendor ||
+                    0
+                ).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}</b></td>
+              </tr>
+            </table>
+            <div>Closed on <b>${invoiceData.closingDate}</b></div>
+            <div>Our reference number is <b>${
+              invoiceData.referenceNumber
+            }</b></div>
+            <div>HST # 829898089RT</div>
+          </div>
+          <div class="footer">
+            Sincerely,<br/>
+            Administrator
+          </div>
+        </body>
+        </html>
+      `;
+    }
+
     console.log("Generating PDF...");
-    
+
     // Generate PDF using Puppeteer
-    const browser = await puppeteer.launch({ 
+    const browser = await puppeteer.launch({
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
     const page = await browser.newPage();
     await page.setContent(invoiceHTML, { waitUntil: "networkidle0" });
-    
-    const pdfBuffer = await page.pdf({ 
+
+    const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
       margin: { top: "20px", right: "20px", bottom: "20px", left: "20px" },
     });
-    
+
     await browser.close();
-    
+
     console.log("PDF generated successfully");
 
     // Email content (simple text, since PDF is the main content)
     let emailText = "";
     let subject = "";
-    
+
     if (invoiceType === "lawyer") {
       emailText = `
 Hello Dear Administrator
@@ -535,6 +655,41 @@ Please confirm receipt of this email.
 Please Don't reply to this email.
       `;
       subject = `Lawyer Invoice - Trade #${
+        invoiceData.tradeNumber || "N/A"
+      } - ${invoiceData.propertyAddress || ""}`;
+    } else if (invoiceType === "client") {
+      emailText = `
+Hello Dear Client,
+
+Please find attached the commission invoice for Trade #${
+        invoiceData.tradeNumber
+      }.
+
+Property: ${invoiceData.propertyAddress}
+Sale Price: $${Number(invoiceData.salePrice || 0).toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}
+Closing Date: ${invoiceData.closingDate}
+Total Commission: $${Number(invoiceData.totalCommission || 0).toLocaleString(
+        undefined,
+        {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }
+      )}
+
+If you have any questions, please don't hesitate to contact us at 905-209-1400 or administrator@homelifetopstar.com.
+
+Best regards,
+Homelife Top Star Realty Inc., Brokerage
+9889 Markham Road, Suite 201
+Markham, Ontario L6E OB7
+Phone: 905-209-1400
+
+Please confirm receipt of this email.
+      `;
+      subject = `Commission Invoice - Trade #${
         invoiceData.tradeNumber || "N/A"
       } - ${invoiceData.propertyAddress || ""}`;
     } else {
@@ -577,7 +732,11 @@ Don't reply to the sender email.
       attachments: [
         {
           filename: `${
-            invoiceType === "lawyer" ? "Lawyer-" : ""
+            invoiceType === "lawyer"
+              ? "Lawyer-"
+              : invoiceType === "client"
+              ? "Client-"
+              : ""
           }Invoice-Trade-${invoiceData.tradeNumber || "N-A"}.pdf`,
           content: pdfBuffer,
           contentType: "application/pdf",
@@ -586,12 +745,12 @@ Don't reply to the sender email.
     };
 
     console.log("Sending email with PDF attachment...");
-    
+
     const info = await transporter.sendMail(mailOptions);
-    
+
     console.log("Email with PDF sent successfully:", info.messageId);
 
-    res.status(200).json({ 
+    res.status(200).json({
       message: "Invoice PDF sent successfully",
       messageId: info.messageId,
       recipientEmail: recipientEmail,
@@ -609,9 +768,9 @@ Don't reply to the sender email.
     } else if (error.message.includes("puppeteer")) {
       errorMessage = "Failed to generate PDF. Please try again.";
     }
-    
-    res.status(500).json({ 
-      message: errorMessage, 
+
+    res.status(500).json({
+      message: errorMessage,
       error: error.message,
     });
   }
@@ -621,13 +780,13 @@ Don't reply to the sender email.
 router.get("/test-connection", async (req, res) => {
   try {
     await transporter.verify();
-    res.status(200).json({ 
+    res.status(200).json({
       message: "Mailwire SMTP service is configured correctly",
       service: "Mailwire SMTP",
       user: process.env.EMAIL_USER,
     });
   } catch (error) {
-    res.status(500).json({ 
+    res.status(500).json({
       message: "Mailwire SMTP configuration error",
       error: error.message,
       hint: "Check Mailwire SMTP credentials and server settings in .env file",

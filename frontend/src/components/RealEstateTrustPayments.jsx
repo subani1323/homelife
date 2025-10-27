@@ -389,80 +389,17 @@ const RealEstateTrustPayments = () => {
 
           amount: chequeAmount,
 
-          recipient: "Bestway Real Estate Ltd., Brokerage - Commission Trust",
+          recipient: "Bestway Real Estate Ltd., Brokerage",
 
           chequeDate: formState.chequeDate,
         }
       );
 
       if (eftResponse.data.eftNumber) {
-        // Now, create the transaction record
-
-        try {
-          // Convert MM/DD/YYYY to proper date format
-
-          const [month, day, year] = formState.chequeDate.split("/");
-
-          const transactionDate = new Date(
-            `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T00:00:00`
-          );
-
-          await axiosInstance.post("/transactions", {
-            date: transactionDate,
-
-            reference: `EFT#${eftResponse.data.eftNumber}`,
-
-            description: "Transfer funds to Commission Trust",
-
-            debitAccount: "CASH - COMMISSION TRUST ACCOUNT",
-
-            creditAccount: "CASH - TRUST",
-
-            amount: chequeAmount,
-
-            tradeId: trade._id,
-          });
-
-          // Also save to finance transactions
-
-          await axiosInstance.post("/finance-transactions", {
-            type: "CommissionTransfer",
-
-            chequeDate: transactionDate,
-
-            amount: chequeAmount,
-
-            chequeWrittenTo: "Bestway Real Estate Ltd., Brokerage",
-
-            tradeId: trade._id,
-
-            description: "Transfer funds to Commission Trust",
-          });
-
-          // Record in ledger for trial balance
-
-          await axiosInstance.post("/ledger/eft-transfer", {
-            eftNumber: eftResponse.data.eftNumber,
-
-            description: `EFT#${eftResponse.data.eftNumber} - Bestway Real Estate Ltd., Brokerage`,
-
-            amount: chequeAmount,
-
-            chequeDate: transactionDate,
-          });
-
-          toast.success(
-            "Transaction posted to Chart of Accounts and Ledger successfully!"
-          );
-        } catch (transactionError) {
-          console.error("Error creating transaction:", transactionError);
-
-          // Handle transaction error separately if needed, e.g., show a specific message
-
-          alert(
-            "EFT number generated, but failed to create the transaction record."
-          );
-        }
+        // Transaction and ledger entries are now created by the backend route
+        toast.success(
+          "Transaction posted to Chart of Accounts and Ledger successfully!"
+        );
 
         const partyNames = getPartyNamesByDealType(trade);
 
@@ -478,7 +415,7 @@ const RealEstateTrustPayments = () => {
           eftNumber: eftResponse.data.eftNumber,
 
           paidTo: {
-            name: "Bestway Real Estate Ltd., Brokerage - Commission Trust",
+            name: "Bestway Real Estate Ltd., Brokerage",
 
             address: "500 ST. GEORGE STREET",
           },
@@ -497,7 +434,7 @@ const RealEstateTrustPayments = () => {
 
           secondPartyLabel: partyNames.secondPartyLabel,
 
-          payTo: "Bestway Real Estate Ltd., Brokerage - Commission Trust",
+          payTo: "Bestway Real Estate Ltd., Brokerage",
 
           orderOf: {
             address: "500 ST. GEORGE STREET",

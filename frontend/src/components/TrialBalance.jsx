@@ -589,11 +589,26 @@ const TrialBalance = () => {
                                       return tx.reference;
                                     }
 
-                                    // For other transactions, show EFT number as 'EFT89'
+                                    // For EFT transactions, show EFT number as 'EFT#XXXX'
+                                    if (tx.eftNumber) {
+                                      return `EFT#${tx.eftNumber}`;
+                                    }
 
-                                    return tx.eftNumber
-                                      ? `EFT${tx.eftNumber}`
-                                      : "-";
+                                    // For commission transfer transactions, try to extract trade number from description
+                                    if (
+                                      tx.description &&
+                                      tx.description.includes("Trade #:")
+                                    ) {
+                                      const tradeMatch =
+                                        tx.description.match(
+                                          /Trade #:\s*(\d+)/i
+                                        );
+                                      if (tradeMatch) {
+                                        return tradeMatch[1];
+                                      }
+                                    }
+
+                                    return "-";
                                   })()}
                                 </td>
 

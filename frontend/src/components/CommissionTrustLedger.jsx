@@ -34,7 +34,48 @@ const CommissionTrustLedger = () => {
       console.log("Response received:", response.data);
       console.log("Number of entries found:", response.data.length);
 
-      setLedgerEntries(response.data);
+      // Filter out duplicate EFT# summary entries
+      const filteredEntries = response.data.filter((entry, index, array) => {
+        // Always keep entries that have "Trade #:" in description (detailed entries)
+        if (entry.description && entry.description.includes("Trade #:")) {
+          return true;
+        }
+
+        // For EFT# summary entries, check if there's a corresponding detailed entry
+        if (
+          entry.description &&
+          entry.description.match(/^EFT#\d+\s*-\s*.+$/)
+        ) {
+          // Extract EFT number from this entry
+          const eftMatch = entry.description.match(/^EFT#(\d+)/);
+          if (eftMatch) {
+            const eftNumber = eftMatch[1];
+            // Check if there's a detailed entry with the same EFT number in its reference field
+            const hasDetailedEntry = array.some(
+              (otherEntry) =>
+                otherEntry.description &&
+                otherEntry.description.includes(`Trade #:`) &&
+                otherEntry.reference === `EFT#${eftNumber}`
+            );
+            // Only keep if there's no corresponding detailed entry
+            return !hasDetailedEntry;
+          }
+        }
+
+        // Keep all other entries
+        return true;
+      });
+
+      console.log("Filtered entries:", filteredEntries.length);
+      console.log(
+        "Sample filtered entries:",
+        filteredEntries.slice(0, 3).map((entry) => ({
+          description: entry.description,
+          reference: entry.reference,
+          amount: entry.amount,
+        }))
+      );
+      setLedgerEntries(filteredEntries);
     } catch (error) {
       console.error("Error fetching ledger entries:", error);
       console.error("Error details:", error.response?.data);
@@ -232,7 +273,31 @@ const CommissionTrustLedger = () => {
                           {entry.reference || "N/A"}
                         </td>
                         <td className="border border-gray-400 px-2 py-1 text-left">
-                          {entry.description}
+                          {(() => {
+                            let description = entry.description || "";
+
+                            // Remove unwanted portions that appear to be struck through
+                            // Remove "Commission Trust - [address]" patterns
+                            description = description.replace(
+                              /\s*-\s*Commission Trust\s*-\s*[^-]+$/g,
+                              ""
+                            );
+
+                            // Remove duplicate address patterns at the end
+                            description = description.replace(
+                              /\s*-\s*[^-]+Street[^-]*$/g,
+                              ""
+                            );
+
+                            // Remove duplicate addresses (same address mentioned twice)
+                            // Pattern: " - Address - Address" becomes " - Address"
+                            description = description.replace(
+                              /\s*-\s*([^-]+)\s*-\s*\1\s*$/g,
+                              " - $1"
+                            );
+
+                            return description;
+                          })()}
                         </td>
                         <td className="border border-gray-400 px-2 py-1 text-center">
                           {entry.type}
@@ -241,20 +306,41 @@ const CommissionTrustLedger = () => {
                           ${parseFloat(entry.amount).toFixed(2)}
                         </td>
                         <td className="border border-gray-400 px-2 py-1 text-center">
-                          {entry.tradeNumber || "N/A"}
+                          {(() => {
+                            // If tradeNumber is already set, use it
+                            if (entry.tradeNumber) return entry.tradeNumber;
+
+                            // Extract trade number from description
+                            if (entry.description) {
+                              const tradeMatch =
+                                entry.description.match(/Trade #:\s*(\d+)/i);
+                              if (tradeMatch) return tradeMatch[1];
+                            }
+
+                            return "N/A";
+                          })()}
                         </td>
                         <td className="border border-gray-400 px-2 py-1 text-left">
                           {(() => {
+                            // If payee is already set, use it
                             if (entry.payee) return entry.payee;
+
                             if (entry.type === "Debit" && entry.description) {
-                              const m = entry.description.match(
-                                /Received from:\s*([^-]+)/
+                              // Check for "Received From:" pattern first
+                              const receivedFromMatch = entry.description.match(
+                                /Received From:\s*([^-]+)/i
                               );
-                              if (m) return m[1].trim();
+                              if (receivedFromMatch)
+                                return receivedFromMatch[1].trim();
+
+                              // Check for "EFT#XXXX - Company Name" pattern
+                              const eftMatch =
+                                entry.description.match(/EFT#\d+\s*-\s*(.+)$/);
+                              if (eftMatch) return eftMatch[1].trim();
                             }
                             if (entry.type === "Credit" && entry.description) {
                               const m =
-                                entry.description.match(/Paid to:\s*([^-]+)/);
+                                entry.description.match(/Paid to:\s*([^-]+)/i);
                               if (m) return m[1].trim();
                             }
                             return "N/A";
@@ -360,7 +446,31 @@ const CommissionTrustLedger = () => {
                             {entry.reference || "N/A"}
                           </td>
                           <td className="px-3 py-2 text-sm text-left border-r whitespace-pre-line break-words">
-                            {entry.description}
+                            {(() => {
+                              let description = entry.description || "";
+
+                              // Remove unwanted portions that appear to be struck through
+                              // Remove "Commission Trust - [address]" patterns
+                              description = description.replace(
+                                /\s*-\s*Commission Trust\s*-\s*[^-]+$/g,
+                                ""
+                              );
+
+                              // Remove duplicate address patterns at the end
+                              description = description.replace(
+                                /\s*-\s*[^-]+Street[^-]*$/g,
+                                ""
+                              );
+
+                              // Remove duplicate addresses (same address mentioned twice)
+                              // Pattern: " - Address - Address" becomes " - Address"
+                              description = description.replace(
+                                /\s*-\s*([^-]+)\s*-\s*\1\s*$/g,
+                                " - $1"
+                              );
+
+                              return description;
+                            })()}
                           </td>
                           <td className="px-3 py-2 text-center border-r">
                             <span className="px-2 py-1 rounded text-xs bg-gray-100 text-black type-badge">
@@ -371,7 +481,19 @@ const CommissionTrustLedger = () => {
                             ${parseFloat(entry.amount).toFixed(2)}
                           </td>
                           <td className="px-3 py-2 text-sm text-center border-r">
-                            {entry.tradeNumber || "N/A"}
+                            {(() => {
+                              // If tradeNumber is already set, use it
+                              if (entry.tradeNumber) return entry.tradeNumber;
+
+                              // Extract trade number from description
+                              if (entry.description) {
+                                const tradeMatch =
+                                  entry.description.match(/Trade #:\s*(\d+)/i);
+                                if (tradeMatch) return tradeMatch[1];
+                              }
+
+                              return "N/A";
+                            })()}
                           </td>
                           <td className="px-3 py-2 text-sm text-left break-words">
                             {(() => {
@@ -382,20 +504,22 @@ const CommissionTrustLedger = () => {
 
                               // For Debit transactions (money received), extract name from description
                               if (entry.type === "Debit" && entry.description) {
+                                // Check for "Received From:" pattern first
                                 const receivedFromMatch =
                                   entry.description.match(
-                                    /Received from:\s*([^-]+)/
+                                    /Received From:\s*([^-]+)/i
                                   );
                                 if (receivedFromMatch) {
-                                  return `Received from: ${receivedFromMatch[1].trim()}`;
-                                } else {
-                                  // Fallback: try to extract name from other patterns
-                                  const nameMatch = entry.description.match(
-                                    /Trade #:?\s*\d+\s*-\s*([^-]+?)\s*-\s*[^-]+$/
+                                  return receivedFromMatch[1].trim();
+                                }
+
+                                // Check for "EFT#XXXX - Company Name" pattern
+                                const eftMatch =
+                                  entry.description.match(
+                                    /EFT#\d+\s*-\s*(.+)$/
                                   );
-                                  if (nameMatch) {
-                                    return `Received from: ${nameMatch[1].trim()}`;
-                                  }
+                                if (eftMatch) {
+                                  return eftMatch[1].trim();
                                 }
                               }
 
@@ -405,16 +529,18 @@ const CommissionTrustLedger = () => {
                                 entry.description
                               ) {
                                 const paidToMatch =
-                                  entry.description.match(/Paid to:\s*([^-]+)/);
+                                  entry.description.match(
+                                    /Paid to:\s*([^-]+)/i
+                                  );
                                 if (paidToMatch) {
-                                  return `Paid to: ${paidToMatch[1].trim()}`;
+                                  return paidToMatch[1].trim();
                                 } else {
                                   // Fallback: try to extract name from other patterns
                                   const nameMatch = entry.description.match(
                                     /Trade #:?\s*\d+\s*-\s*([^-]+?)\s*-\s*[^-]+$/
                                   );
                                   if (nameMatch) {
-                                    return `Paid to: ${nameMatch[1].trim()}`;
+                                    return nameMatch[1].trim();
                                   }
                                 }
                               }

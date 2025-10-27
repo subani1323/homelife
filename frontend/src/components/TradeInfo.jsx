@@ -1122,7 +1122,35 @@ const TradeInfo = ({ user }) => {
     totalCommission: "", // <-- Add this line
     tradeClassification: "",
   });
+  const [clientInvoiceForm, setClientInvoiceForm] = useState({
+    date: new Date().toISOString().split("T")[0],
+    trade: "",
+    dealType: "",
+    propertyAddress: "",
+    salePrice: "",
+    closingDate: "",
+    referenceNumber: "",
+    commissionPayable: "",
+    totalHST: "",
+    totalCommission: "",
+    totalCommissionPercentage: "",
+    deposit: "",
+    listingCommissionPercent: "",
+    sellingCommissionPercent: "",
+    listingCommissionAmount: "",
+    sellingCommissionAmount: "",
+    listingHSTAmount: "",
+    sellingHSTAmount: "",
+    tradeClassification: "",
+    balanceToBrokerage: "",
+    balanceToVendor: "",
+    balanceLabel: "",
+  });
+  const [selectedTradeForClientInvoice, setSelectedTradeForClientInvoice] =
+    useState(null);
   const [nextReferenceNumber, setNextReferenceNumber] = useState(4000);
+  const [nextClientReferenceNumber, setNextClientReferenceNumber] =
+    useState(5000);
 
   // Add state for data sources
   const [trustData, setTrustData] = useState([]);
@@ -1536,12 +1564,217 @@ const TradeInfo = ({ user }) => {
     }
   };
 
+  const handleEmailClientPDF = async () => {
+    if (!selectedTradeForClientInvoice) {
+      toast.error("Please select a trade first");
+      return;
+    }
+
+    // For client invoices, we need to get client email from the trade's people section
+    const people = selectedTradeForClientInvoice.people || [];
+    const client = people.find(
+      (p) => p.type === "Client" || p.type === "Buyer" || p.type === "Seller"
+    );
+    const clientEmail = client?.email || "";
+
+    if (!clientEmail) {
+      toast.error(
+        "No email address found for client. Please add an email address in the trade's people section."
+      );
+      return;
+    }
+
+    try {
+      // Prepare client invoice data
+      const invoiceData = {
+        date: clientInvoiceForm.date,
+        tradeNumber: clientInvoiceForm.trade,
+        dealType: clientInvoiceForm.dealType,
+        propertyAddress: clientInvoiceForm.propertyAddress,
+        salePrice: clientInvoiceForm.salePrice,
+        closingDate: clientInvoiceForm.closingDate,
+        referenceNumber: clientInvoiceForm.referenceNumber,
+        commissionPayable: clientInvoiceForm.commissionPayable,
+        totalHST: clientInvoiceForm.totalHST,
+        totalCommission: clientInvoiceForm.totalCommission,
+        totalCommissionPercentage: clientInvoiceForm.totalCommissionPercentage,
+        deposit: clientInvoiceForm.deposit,
+        listingCommissionPercent: clientInvoiceForm.listingCommissionPercent,
+        sellingCommissionPercent: clientInvoiceForm.sellingCommissionPercent,
+        listingCommissionAmount: clientInvoiceForm.listingCommissionAmount,
+        sellingCommissionAmount: clientInvoiceForm.sellingCommissionAmount,
+        listingHSTAmount: clientInvoiceForm.listingHSTAmount,
+        sellingHSTAmount: clientInvoiceForm.sellingHSTAmount,
+        tradeClassification: clientInvoiceForm.tradeClassification,
+        balanceToBrokerage: clientInvoiceForm.balanceToBrokerage,
+        balanceToVendor: clientInvoiceForm.balanceToVendor,
+        balanceLabel: clientInvoiceForm.balanceLabel,
+      };
+
+      console.log("Sending client invoice data:", invoiceData);
+      toast.info("Generating and sending client invoice PDF...");
+
+      const response = await axiosInstance.post("/email/send-invoice-pdf", {
+        recipientEmail: clientEmail,
+        invoiceData,
+        invoiceType: "client",
+      });
+
+      console.log("Email response:", response.data);
+      toast.success(`Client invoice PDF sent successfully to ${clientEmail}`);
+    } catch (error) {
+      console.error("Error sending client invoice PDF:", error);
+      console.error("Error details:", error.response?.data);
+
+      let errorMessage = "Failed to send client invoice PDF";
+      if (error.response?.data?.message) {
+        errorMessage += ": " + error.response.data.message;
+      } else if (error.message) {
+        errorMessage += ": " + error.message;
+      }
+
+      toast.error(errorMessage);
+    }
+  };
+
   const handleLawyerInvoiceFormChange = (e) => {
     const { name, value } = e.target;
     setLawyerInvoiceForm((prev) => ({
       ...prev,
       [name]: value,
     }));
+  };
+
+  const handleClientInvoiceFormChange = (e) => {
+    const { name, value } = e.target;
+    setClientInvoiceForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleClientTradeSelect = (selectedOption) => {
+    if (!selectedOption) {
+      setSelectedTradeForClientInvoice(null);
+      setClientInvoiceForm((prev) => ({
+        ...prev,
+        trade: "",
+        dealType: "",
+        propertyAddress: "",
+        salePrice: "",
+        closingDate: "",
+        commissionPayable: "",
+        totalHST: "",
+        totalCommission: "",
+        referenceNumber: nextClientReferenceNumber.toString(),
+        deposit: "",
+        listingCommissionPercent: "",
+        sellingCommissionPercent: "",
+        listingCommissionAmount: "",
+        sellingCommissionAmount: "",
+        listingHSTAmount: "",
+        sellingHSTAmount: "",
+        tradeClassification: "",
+        balanceToBrokerage: "",
+        balanceToVendor: "",
+        balanceLabel: "",
+      }));
+      setNextClientReferenceNumber((prev) => {
+        const next = prev + 1;
+        localStorage.setItem("nextClientReferenceNumber", next.toString());
+        return next;
+      });
+      return;
+    }
+
+    const selectedTrade = selectedOption.trade;
+    setSelectedTradeForClientInvoice(selectedTrade);
+
+    const keyInfo = selectedTrade.keyInfo || {};
+    const commission = selectedTrade.commission || {};
+    const trustRecords = selectedTrade.trustRecords || [];
+
+    // Calculate commission values from commission section
+    let listingCommissionAmount = 0;
+    let sellingCommissionAmount = 0;
+    let listingHSTAmount = 0;
+    let sellingHSTAmount = 0;
+
+    if (
+      commission.commissionIncomeRows &&
+      commission.commissionIncomeRows.length > 0
+    ) {
+      const commissionIncome = commission.commissionIncomeRows[0];
+      listingCommissionAmount = parseFloat(commissionIncome.listingAmount) || 0;
+      sellingCommissionAmount = parseFloat(commissionIncome.sellingAmount) || 0;
+      listingHSTAmount = parseFloat(commissionIncome.listingTax) || 0;
+      sellingHSTAmount = parseFloat(commissionIncome.sellingTax) || 0;
+    }
+
+    const commissionPayable = listingCommissionAmount + sellingCommissionAmount;
+    const totalHST = listingHSTAmount + sellingHSTAmount;
+    const totalCommission = commissionPayable + totalHST;
+
+    // Calculate total commission percentage
+    const salePrice = parseFloat(keyInfo.sellPrice) || 0;
+    const totalCommissionPercentage =
+      salePrice > 0
+        ? ((commissionPayable / salePrice) * 100).toFixed(2)
+        : "0.00";
+
+    // Calculate commission percentages for listing and selling sides
+    const listingCommissionPercent =
+      salePrice > 0
+        ? ((listingCommissionAmount / salePrice) * 100).toFixed(2)
+        : "0.00";
+    const sellingCommissionPercent =
+      salePrice > 0
+        ? ((sellingCommissionAmount / salePrice) * 100).toFixed(2)
+        : "0.00";
+
+    // Get trade classification from keyInfo
+    const tradeClassification = keyInfo.classification || "";
+
+    // Get deposit from trust records
+    const depositAmount =
+      trustRecords.length > 0 ? trustRecords[0].amount : "0";
+    const deposit = parseFloat(depositAmount) || 0;
+
+    // Calculate balance (similar to lawyer invoice)
+    const balanceAmount = parseFloat(totalCommission.toFixed(2)) - deposit;
+    const balanceValue = Math.abs(balanceAmount).toFixed(2);
+    const balanceLabel =
+      balanceAmount > 0 ? "Balance to Brokerage" : "Balance to Vendor";
+
+    setClientInvoiceForm((prev) => ({
+      ...prev,
+      trade: selectedTrade.tradeNumber?.toString() || "",
+      dealType: keyInfo.dealType || "",
+      propertyAddress: `${keyInfo.streetNumber || ""} ${
+        keyInfo.streetName || ""
+      }`.trim(),
+      salePrice: keyInfo.sellPrice || "",
+      closingDate: keyInfo.closeDate || "",
+      commissionPayable: commissionPayable.toFixed(2),
+      totalHST: totalHST.toFixed(2),
+      totalCommission: totalCommission.toFixed(2),
+      totalCommissionPercentage: totalCommissionPercentage,
+      referenceNumber: nextClientReferenceNumber.toString(),
+      deposit: depositAmount,
+      listingCommissionPercent: listingCommissionPercent,
+      sellingCommissionPercent: sellingCommissionPercent,
+      listingCommissionAmount: listingCommissionAmount.toFixed(2),
+      sellingCommissionAmount: sellingCommissionAmount.toFixed(2),
+      listingHSTAmount: listingHSTAmount.toFixed(2),
+      sellingHSTAmount: sellingHSTAmount.toFixed(2),
+      tradeClassification: tradeClassification,
+      balanceToBrokerage: balanceAmount > 0 ? balanceValue : "",
+      balanceToVendor: balanceAmount <= 0 ? balanceValue : "",
+      balanceLabel: balanceLabel,
+    }));
+
+    setNextClientReferenceNumber((prev) => {
+      const next = prev + 1;
+      localStorage.setItem("nextClientReferenceNumber", next.toString());
+      return next;
+    });
   };
 
   const handleLawyerTypeChange = (type) => {
@@ -1577,6 +1810,14 @@ const TradeInfo = ({ user }) => {
     const storedRef = localStorage.getItem("nextReferenceNumber");
     if (storedRef) {
       setNextReferenceNumber(parseInt(storedRef, 10));
+    }
+  }, []);
+
+  // Initialize nextClientReferenceNumber from localStorage if available
+  useEffect(() => {
+    const storedClientRef = localStorage.getItem("nextClientReferenceNumber");
+    if (storedClientRef) {
+      setNextClientReferenceNumber(parseInt(storedClientRef, 10));
     }
   }, []);
 
@@ -1871,6 +2112,149 @@ const TradeInfo = ({ user }) => {
                   Office:905-209-1400<br/>
         Fax: 905-209-1403<br/>
           admin@homelifetopstar.com 
+        </div>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+    // Wait for images to load before printing
+    setTimeout(() => {
+      printWindow.print();
+    }, 500);
+  };
+
+  const printClientInvoice = () => {
+    const printWindow = window.open("", "_blank");
+    const date = clientInvoiceForm.date;
+    const tradeNumber = clientInvoiceForm.trade;
+    const dealType = clientInvoiceForm.dealType;
+    const propertyAddress = clientInvoiceForm.propertyAddress;
+    const salePrice = clientInvoiceForm.salePrice;
+    const closingDate = clientInvoiceForm.closingDate;
+    const referenceNumber = clientInvoiceForm.referenceNumber;
+    const commissionPayable = clientInvoiceForm.commissionPayable;
+    const totalHST = clientInvoiceForm.totalHST;
+    const totalCommission = clientInvoiceForm.totalCommission;
+    const totalCommissionPercentage =
+      clientInvoiceForm.totalCommissionPercentage;
+    const deposit = clientInvoiceForm.deposit;
+    const listingCommissionPercent = clientInvoiceForm.listingCommissionPercent;
+    const sellingCommissionPercent = clientInvoiceForm.sellingCommissionPercent;
+    const listingCommissionAmount = clientInvoiceForm.listingCommissionAmount;
+    const sellingCommissionAmount = clientInvoiceForm.sellingCommissionAmount;
+    const listingHSTAmount = clientInvoiceForm.listingHSTAmount;
+    const sellingHSTAmount = clientInvoiceForm.sellingHSTAmount;
+    const tradeClassification = clientInvoiceForm.tradeClassification;
+    const balanceLabel = clientInvoiceForm.balanceLabel;
+    const balanceValue =
+      clientInvoiceForm.balanceToBrokerage ||
+      clientInvoiceForm.balanceToVendor ||
+      "0.00";
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Client Invoice</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 40px; }
+          .header { text-align: center; margin-bottom: 30px; }
+          .header img { width: 120px; margin-bottom: 10px; }
+          .company-title { font-size: 20px; font-weight: bold; margin-top: 8px; }
+          .company-address { margin-bottom: 8px; }
+          .section { margin-bottom: 24px; }
+          .label { font-weight: bold; display: inline-block; min-width: 120px; }
+          .value { display: inline-block; }
+          .amount-table { margin-top: 24px; margin-bottom: 24px; }
+          .amount-table td { padding: 2px 8px; }
+          .amount-table .desc { min-width: 220px; }
+          .amount-table .right { text-align: right; min-width: 100px; }
+          .amount-table .bold { font-weight: bold; }
+          .footer { margin-top: 32px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <img src="/logo.jpeg" alt="Homelife Top Star Realty Inc. Logo" onerror="console.log('Logo failed to load: ' + this.src); this.style.display='none';" />
+          <div class="company-title">Homelife Top Star Realty Inc., Brokerage</div>
+          <div class="company-address">9889 Markham Road, Suite 201 Markham, Ontario L6E OB7</div>
+          <div>Phone: 905-209-1400 | Fax: 905-209-1403</div>
+        </div>
+        <div class="section">
+          <div>${date}</div>
+          <br/>
+          <div><b>Re:</b> Invoice for Commission Re: ${
+            dealType === "Lease" ? "Lease" : "Sale"
+          } of ${propertyAddress}, At a price of <b>$${Number(
+      salePrice
+    ).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}</b></div>
+        </div>
+        <div class="section">
+          <table class="amount-table">
+            <tr>
+              <td class="desc">Total Commission</td>
+              <td class="right">$${Number(commissionPayable).toLocaleString(
+                undefined,
+                {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                }
+              )}</td>
+            </tr>
+            <tr>
+              <td class="desc">Total HST</td>
+              <td class="right">$${Number(totalHST).toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}</td>
+            </tr>
+            <tr>
+              <td class="desc">Total Commission Percentage</td>
+              <td class="right">${totalCommissionPercentage}%</td>
+            </tr>
+            <tr>
+              <td class="desc">Total Commission Payable</td>
+              <td class="right">$${Number(totalCommission).toLocaleString(
+                undefined,
+                {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                }
+              )}</td>
+            </tr>
+            <tr>
+              <td class="desc">Less: Deposit For Agreement to ${
+                dealType === "Lease" ? "Lease" : "Purchase and Sale"
+              }</td>
+              <td class="right">$${parseFloat(deposit || 0).toLocaleString(
+                undefined,
+                {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                }
+              )}</td>
+            </tr>
+              <tr class="bold">
+                <td class="desc"><b>${balanceLabel}</b></td>
+                <td class="right"><b>$${Number(balanceValue).toLocaleString(
+                  undefined,
+                  {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  }
+                )}</b></td>
+              </tr>
+          </table>
+          <div>Closed on <b>${closingDate}</b></div>
+          <div>Our reference number is <b>${referenceNumber}</b></div>
+          <div>HST # 829898089RT</div>
+        </div>
+        <div class="footer">
+          Sincerely,<br/>
+          Administrator
         </div>
       </body>
       </html>
@@ -2267,6 +2651,17 @@ const TradeInfo = ({ user }) => {
                       className="form-radio text-blue-900"
                     />
                     <span className="ml-2">Listing Brokerage</span>
+                  </label>
+                  <label className="inline-flex items-center">
+                    <input
+                      type="radio"
+                      name="invoiceType"
+                      value="client"
+                      checked={invoiceType === "client"}
+                      onChange={(e) => setInvoiceType("client")}
+                      className="form-radio text-blue-900"
+                    />
+                    <span className="ml-2">Client</span>
                   </label>
                 </div>
               </div>
@@ -2960,6 +3355,299 @@ const TradeInfo = ({ user }) => {
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+              {invoiceType === "client" && (
+                <div className="space-y-4 border-t pt-4">
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium mb-1">
+                      Select Trade
+                    </label>
+                    <Select
+                      options={tradeOptions}
+                      onChange={handleClientTradeSelect}
+                      value={
+                        selectedTradeForClientInvoice
+                          ? tradeOptions.find(
+                              (opt) =>
+                                opt.value ===
+                                selectedTradeForClientInvoice.tradeNumber
+                            )
+                          : null
+                      }
+                      placeholder="Type or select trade number/address..."
+                      isClearable
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Date
+                      </label>
+                      <input
+                        type="date"
+                        name="date"
+                        value={clientInvoiceForm.date}
+                        onChange={handleClientInvoiceFormChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Trade Number
+                      </label>
+                      <input
+                        type="text"
+                        value={clientInvoiceForm.trade || ""}
+                        readOnly
+                        className="w-full rounded border-gray-300 bg-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Deal Type
+                      </label>
+                      <input
+                        type="text"
+                        value={clientInvoiceForm.dealType || ""}
+                        readOnly
+                        className="w-full rounded border-gray-300 bg-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Property Address
+                      </label>
+                      <input
+                        type="text"
+                        value={clientInvoiceForm.propertyAddress || ""}
+                        readOnly
+                        className="w-full rounded border-gray-300 bg-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Sale Price
+                      </label>
+                      <input
+                        type="text"
+                        value={clientInvoiceForm.salePrice || ""}
+                        readOnly
+                        className="w-full rounded border-gray-300 bg-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Closing Date
+                      </label>
+                      <input
+                        type="text"
+                        value={clientInvoiceForm.closingDate || ""}
+                        readOnly
+                        className="w-full rounded border-gray-300 bg-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Reference Number
+                      </label>
+                      <input
+                        type="text"
+                        value={clientInvoiceForm.referenceNumber || ""}
+                        readOnly
+                        className="w-full rounded border-gray-300 bg-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Commission Payable
+                      </label>
+                      <input
+                        type="text"
+                        value={clientInvoiceForm.commissionPayable || ""}
+                        readOnly
+                        className="w-full rounded border-gray-300 bg-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Total HST
+                      </label>
+                      <input
+                        type="text"
+                        value={clientInvoiceForm.totalHST || ""}
+                        readOnly
+                        className="w-full rounded border-gray-300 bg-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Total Commission Percentage
+                      </label>
+                      <input
+                        type="text"
+                        value={
+                          clientInvoiceForm.totalCommissionPercentage
+                            ? `${clientInvoiceForm.totalCommissionPercentage}%`
+                            : ""
+                        }
+                        readOnly
+                        className="w-full rounded border-gray-300 bg-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Total Commission
+                      </label>
+                      <input
+                        type="text"
+                        value={clientInvoiceForm.totalCommission || ""}
+                        readOnly
+                        className="w-full rounded border-gray-300 bg-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Deposit
+                      </label>
+                      <input
+                        type="text"
+                        value={clientInvoiceForm.deposit || ""}
+                        readOnly
+                        className="w-full rounded border-gray-300 bg-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Listing Side Commission (%)
+                      </label>
+                      <input
+                        type="text"
+                        value={clientInvoiceForm.listingCommissionPercent || ""}
+                        readOnly
+                        className="w-full rounded border-gray-300 bg-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Selling Side Commission (%)
+                      </label>
+                      <input
+                        type="text"
+                        value={clientInvoiceForm.sellingCommissionPercent || ""}
+                        readOnly
+                        className="w-full rounded border-gray-300 bg-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Listing Side Commission Amount
+                      </label>
+                      <input
+                        type="text"
+                        value={clientInvoiceForm.listingCommissionAmount || ""}
+                        readOnly
+                        className="w-full rounded border-gray-300 bg-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Selling Side Commission Amount
+                      </label>
+                      <input
+                        type="text"
+                        value={clientInvoiceForm.sellingCommissionAmount || ""}
+                        readOnly
+                        className="w-full rounded border-gray-300 bg-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Listing Side HST Amount
+                      </label>
+                      <input
+                        type="text"
+                        value={clientInvoiceForm.listingHSTAmount || ""}
+                        readOnly
+                        className="w-full rounded border-gray-300 bg-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Selling Side HST Amount
+                      </label>
+                      <input
+                        type="text"
+                        value={clientInvoiceForm.sellingHSTAmount || ""}
+                        readOnly
+                        className="w-full rounded border-gray-300 bg-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Trade Classification
+                      </label>
+                      <input
+                        type="text"
+                        value={clientInvoiceForm.tradeClassification || ""}
+                        readOnly
+                        className="w-full rounded border-gray-300 bg-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        {clientInvoiceForm.balanceLabel || "Balance"}
+                      </label>
+                      <input
+                        type="text"
+                        value={
+                          clientInvoiceForm.balanceToBrokerage ||
+                          clientInvoiceForm.balanceToVendor ||
+                          ""
+                        }
+                        readOnly
+                        className="w-full rounded border-gray-300 bg-gray-100"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-2 flex gap-3">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        printClientInvoice();
+                      }}
+                      className="bg-blue-900 text-white px-6 py-2 rounded font-semibold hover:bg-blue-800 transition-colors"
+                      disabled={!selectedTradeForClientInvoice}
+                    >
+                      Print Invoice
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleEmailClientPDF();
+                      }}
+                      className="bg-green-600 text-white px-6 py-2 rounded font-semibold hover:bg-green-700 transition-colors flex items-center gap-2"
+                      disabled={!selectedTradeForClientInvoice}
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-5 w-5"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                      >
+                        <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
+                        <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
+                      </svg>
+                      Email PDF
+                    </button>
+                  </div>
                 </div>
               )}
             </form>

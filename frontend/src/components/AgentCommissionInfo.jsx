@@ -464,7 +464,7 @@ const AgentCommissionInfo = ({
         feesDeducted = calculatedAmount * 0.1; // 10% of amount
         break;
       case "plan8515":
-        feesDeducted = calculatedAmount * 0.13; // 13% of amount
+        feesDeducted = calculatedAmount * 0.15; // 15% of amount
         break;
       case "plan955":
         feesDeducted = calculatedAmount * 0.05; // 5% of amount
@@ -564,15 +564,33 @@ const AgentCommissionInfo = ({
   const handleBuyerRebateSubmit = () => {
     if (!pendingAgent) return;
 
+    // Calculate the new amounts based on buyer rebate logic
+    let finalAmount = parseFloat(pendingAgent.amount) || 0;
+    let finalTax = parseFloat(pendingAgent.tax) || 0;
+    let finalTotal = parseFloat(pendingAgent.total) || 0;
     let finalNetCommission = parseFloat(pendingAgent.netCommission) || 0;
 
     if (buyerRebateIncluded === "yes" && buyerRebateAmount) {
       const rebateAmount = parseFloat(buyerRebateAmount) || 0;
-      finalNetCommission = finalNetCommission - rebateAmount;
+
+      // Apply buyer rebate deduction to the amount (selling/listing)
+      finalAmount = finalAmount - rebateAmount;
+
+      // Keep the original tax calculation (tax is calculated on original amount before rebate)
+      // finalTax remains the same
+
+      // Recalculate total as amount + tax
+      finalTotal = finalAmount + finalTax;
+
+      // Net commission is total minus fees
+      const totalFees = parseFloat(pendingAgent.totalFees) || 0;
+      finalNetCommission = finalTotal - totalFees;
     }
 
     const agentWithRebate = {
       ...pendingAgent,
+      amount: finalAmount.toFixed(2),
+      total: finalTotal.toFixed(2),
       netCommission: finalNetCommission.toFixed(2),
       buyerRebateIncluded: buyerRebateIncluded,
       buyerRebateAmount: buyerRebateIncluded === "yes" ? buyerRebateAmount : "",

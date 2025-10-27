@@ -131,6 +131,23 @@ router.post("/commission-transfer", async (req, res) => {
       );
     }
 
+    // Build address from trade keyInfo
+    let tradeAddress = "";
+    if (trade.keyInfo) {
+      const addressParts = [
+        trade.keyInfo.streetNumber,
+        trade.keyInfo.streetName,
+        trade.keyInfo.unit,
+        trade.keyInfo.city,
+        trade.keyInfo.province,
+      ].filter((part) => part && part.trim() !== "");
+      tradeAddress = addressParts.join(" ");
+    }
+
+    // Get trade number
+    const tradeNumber =
+      trade.tradeNumber || trade.keyInfo?.tradeNumber || "N/A";
+
     const newEFT = new RealEstateTrustEFT({
       eftNumber: nextEFTNumber,
       tradeId: tradeId,
@@ -148,6 +165,41 @@ router.post("/commission-transfer", async (req, res) => {
     await Trade.findByIdAndUpdate(tradeId, {
       $push: { realEstateTrustEFTs: newEFT._id },
     });
+
+    // Create ledger entries with proper description format
+    // Account 10004 (Commission Trust) - Received From
+    const commissionTrustDescription = `Trade #: ${tradeNumber}, Received From: ${recipient} - Commission Trust - ${tradeAddress}`;
+
+    // Account 10002 (Trust) - Paid To
+    const trustDescription = `Trade #: ${tradeNumber}, Paid To: ${recipient} - Commission Trust - ${tradeAddress}`;
+
+    // Debit Commission Trust Account (10004)
+    const debitEntry = new Ledger({
+      accountNumber: "10004",
+      accountName: "CASH - COMMISSION TRUST ACCOUNT",
+      debit: amount,
+      credit: 0,
+      description: commissionTrustDescription,
+      eftNumber: nextEFTNumber.toString(),
+      chequeDate: parsedChequeDate,
+      tradeNumber: tradeNumber,
+      payee: recipient,
+    });
+    await debitEntry.save();
+
+    // Credit Trust Account (10002)
+    const creditEntry = new Ledger({
+      accountNumber: "10002",
+      accountName: "CASH - TRUST",
+      debit: 0,
+      credit: amount,
+      description: trustDescription,
+      eftNumber: nextEFTNumber.toString(),
+      chequeDate: parsedChequeDate,
+      tradeNumber: tradeNumber,
+      payee: recipient,
+    });
+    await creditEntry.save();
 
     res.status(201).json({ eftNumber: nextEFTNumber });
   } catch (error) {

@@ -151,17 +151,41 @@ router.post("/agent-commission", async (req, res) => {
       $push: { commissionTrustEFTs: newEFT._id },
     });
 
+    // Build address from trade keyInfo
+    let tradeAddress = "";
+    if (trade.keyInfo) {
+      const addressParts = [
+        trade.keyInfo.streetNumber,
+        trade.keyInfo.streetName,
+        trade.keyInfo.unit,
+        trade.keyInfo.city,
+        trade.keyInfo.province,
+      ].filter((part) => part && part.trim() !== "");
+      tradeAddress = addressParts.join(" ");
+    }
+
+    // Get trade number
+    const tradeNumber =
+      trade.tradeNumber || trade.keyInfo?.tradeNumber || "N/A";
+
     // --- Add ledger entries for debit and credit ---
-    const ledgerDescription = `Trade #: ${trade.tradeNumber}, Paid to: ${agentName}`;
+    // Account 10004 (Commission Trust) - Received From
+    const commissionTrustDescription = `Trade #: ${tradeNumber}, Received From: ${agentName} - Commission Trust - ${tradeAddress}`;
+
+    // Account 21500 (Commission Payable) - Paid To
+    const commissionPayableDescription = `Trade #: ${tradeNumber}, Paid to: ${agentName} - Commission Trust - ${tradeAddress}`;
+
     // Debit 21500 Commission Payable
     const debitEntry = new (require("../models/Ledger"))({
       accountNumber: "21500",
       accountName: "Commission Payable",
       debit: amount,
       credit: 0,
-      description: ledgerDescription,
+      description: commissionPayableDescription,
       eftNumber: nextEFTNumber,
       chequeDate: parsedChequeDate,
+      tradeNumber: tradeNumber,
+      payee: agentName,
     });
     await debitEntry.save();
     // Credit 10004 Cash - Commission Trust Account
@@ -170,9 +194,11 @@ router.post("/agent-commission", async (req, res) => {
       accountName: "CASH - COMMISSION TRUST ACCOUNT",
       debit: 0,
       credit: amount,
-      description: ledgerDescription,
+      description: commissionTrustDescription,
       eftNumber: nextEFTNumber,
       chequeDate: parsedChequeDate,
+      tradeNumber: tradeNumber,
+      payee: agentName,
     });
     await creditEntry.save();
     // --- End ledger entries ---
@@ -317,17 +343,41 @@ router.post("/outside-broker", async (req, res) => {
       $push: { commissionTrustEFTs: newEFT._id },
     });
 
+    // Build address from trade keyInfo
+    let tradeAddress = "";
+    if (trade.keyInfo) {
+      const addressParts = [
+        trade.keyInfo.streetNumber,
+        trade.keyInfo.streetName,
+        trade.keyInfo.unit,
+        trade.keyInfo.city,
+        trade.keyInfo.province,
+      ].filter((part) => part && part.trim() !== "");
+      tradeAddress = addressParts.join(" ");
+    }
+
+    // Get trade number
+    const tradeNumber =
+      trade.tradeNumber || trade.keyInfo?.tradeNumber || "N/A";
+
     // --- Add ledger entries for debit and credit ---
-    const ledgerDescription = `Trade #: ${trade.tradeNumber}, Paid to: ${recipient}`;
+    // Account 10004 (Commission Trust) - Received From
+    const commissionTrustDescription = `Trade #: ${tradeNumber}, Received From: ${recipient} - Commission Trust - ${tradeAddress}`;
+
+    // Account 21100 (A/P) - Paid To
+    const apDescription = `Trade #: ${tradeNumber}, Paid to: ${recipient} - Commission Trust - ${tradeAddress}`;
+
     // Debit 21100 A/P - Other Brokers & Referrals
     const debitEntry = new (require("../models/Ledger"))({
       accountNumber: "21100",
       accountName: "A/P - Other Brokers & Referrals",
       debit: amount,
       credit: 0,
-      description: ledgerDescription,
+      description: apDescription,
       eftNumber: nextEFTNumber,
       chequeDate: parsedChequeDate,
+      tradeNumber: tradeNumber,
+      payee: recipient,
     });
     await debitEntry.save();
     // Credit 10004 Cash - Commission Trust Account
@@ -336,9 +386,11 @@ router.post("/outside-broker", async (req, res) => {
       accountName: "CASH - COMMISSION TRUST ACCOUNT",
       debit: 0,
       credit: amount,
-      description: ledgerDescription,
+      description: commissionTrustDescription,
       eftNumber: nextEFTNumber,
       chequeDate: parsedChequeDate,
+      tradeNumber: tradeNumber,
+      payee: recipient,
     });
     await creditEntry.save();
     // --- End ledger entries ---
